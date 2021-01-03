@@ -16,6 +16,7 @@
     "autoprefixer": "^9.8.6",
     "chance": "^1.1.7",
     "classnames": "^2.2.6",
+    "html2canvas": "^1.0.0-rc.7",
     "postcss": "^7.0.35",
     "random-js": "^2.1.0",
     "react": "^17.0.1",

@@ -1,11 +1,13 @@
 import React, {
-    FunctionComponent,
+    FunctionComponent, Ref,
     SyntheticEvent,
-    useEffect,
+    useEffect, useRef,
     useState
 } from 'react';
 
 import {Chance} from 'chance';
+import {useScreenshot} from './use-react-screenshot'
+
 
 interface User {
     name: string;
@@ -24,6 +26,9 @@ const App: FunctionComponent = () => {
     const [users, setUsers] = useState<Map<string, User>>(new Map());
     const [teamCount, setTeamCount] = useState(2);
     const [bias, setBias] = useState("red");
+    const [time, setTime] = useState("");
+    const ref = useRef(null);
+    const [image, takeScreenshot] = useScreenshot()
     const colors = ["red", "blue", "green", "yellow"];
 
     useEffect(() => {
@@ -33,64 +38,90 @@ const App: FunctionComponent = () => {
                 if (!n?.trim()) {
                     continue;
                 }
-                newUsers.set(n, oldUsers.get(n) ?? {name: n, smPool: true, enabled: false, id: Chance().guid()});
+                newUsers.set(n, oldUsers.get(n) ?? {
+                    name: n,
+                    smPool: true,
+                    enabled: false,
+                    id: Chance().guid()
+                });
             }
             return newUsers;
         });
     }, [names]);
 
-    return (
-        <div className="font-normal container mx-auto px-40">
-            <div className="flex flex-wrap justify-center"> {[...users.values()].map(user => (
-                <Member key={user.name} {...user} onChange={u => {
-                    const newMap = new Map(users);
-                    newMap.set(user.name, u);
-                    setUsers(newMap);
-                }}/>
-            ))
-            }
-            </div>
-            <div className="mx-auto flex flex-wrap">
-                <div className="px-4">
-                    <Names names={names} onChange={setNames}/>
-                </div>
-                <div>
-                    <div className="inline-block text-xl"><label htmlFor="teamCount">Team
-                        Count: </label>
-                        <input className="border border-black" name="teamCount" type="number"
-                               min={2} max={colors.length} value={teamCount} onChange={e => {
-                            let number = +e.target.value;
-                            if (number < 2) {
-                                number = 2;
-                            }
-                            if (number > colors.length) {
-                                number = colors.length;
-                            }
+    const onScreenshot = async (_: unknown) => {
+        const {blob} = await takeScreenshot(ref.current);
+        // @ts-ignore
+        if (!navigator.clipboard.write) {
+            return;
+        }
 
-                            setTeamCount(number);
-                        }}/></div>
-                    <div
-                        className="flex"
-                        onChange={(e: React.ChangeEvent<HTMLInputElement>) => setBias(e.target.value)}>
-                        {[...colors.slice(0, teamCount), "random"].map(c => <div
-                            className="capitalize inline-block px-3" key={c}><input
-                            type="radio" value={c} defaultChecked={c === bias}
-                            name="bias"/> {c} </div>)}
-                    </div>
-                    <button
-                        className="text-2xl font-medium rounded-md p-2 m-4 bg-blue-500 text-white"
-                        onClick={_ => setUsers(new Map(users))}>Reshuffle Teams
-                    </button>
-                    <Teams users={[...users.values()]} teamCount={teamCount} colors={colors}
-                           bias={bias}/>
+        // @ts-ignore
+        await navigator.clipboard.write([new ClipboardItem({[blob.type]: blob})]);
+        setTime(new Date().toDateString());
+    };
+
+    return (
+        <div className="flex">
+            <div className="px-1 flex-auto">
+                <Names names={names} onChange={setNames}/>
+            </div>
+            <div className="font-normal container mx-auto px-40 flex-auto">
+                <div className="flex flex-wrap justify-center"> {[...users.values()].map(user => (
+                    <Member key={user.name} {...user} onChange={u => {
+                        const newMap = new Map(users);
+                        newMap.set(user.name, u);
+                        setUsers(newMap);
+                    }}/>
+                ))
+                }
                 </div>
+                <div className="mx-auto flex flex-wrap">
+                    <div>
+                        <div className="inline-block text-xl"><label htmlFor="teamCount">Team
+                            Count: </label>
+                            <input className="border border-black" name="teamCount" type="number"
+                                   min={2} max={colors.length} value={teamCount} onChange={e => {
+                                let number = +e.target.value;
+                                if (number < 2) {
+                                    number = 2;
+                                }
+                                if (number > colors.length) {
+                                    number = colors.length;
+                                }
+
+                                setTeamCount(number);
+                            }}/></div>
+                        <div
+                            className="flex"
+                            onChange={(e: React.ChangeEvent<HTMLInputElement>) => setBias(e.target.value)}>
+                            {[...colors.slice(0, teamCount), "random"].map(c => <div
+                                className="capitalize inline-block px-3" key={c}><input
+                                type="radio" value={c} defaultChecked={c === bias}
+                                name="bias"/> {c} </div>)}
+                        </div>
+                        <button
+                            className="text-2xl font-medium rounded-md p-2 m-4 bg-blue-500 text-white"
+                            onClick={_ => setUsers(new Map(users))}>Reshuffle Teams
+                        </button>
+                        <Teams imageRef={ref} users={[...users.values()]} teamCount={teamCount}
+                               colors={colors}
+                               bias={bias}/>
+                    </div>
+                </div>
+            </div>
+            <div className="p-4 flex-auto">
+                <button className=" font-medium rounded-md p-2 bg-blue-500 text-white"
+                        onClick={onScreenshot}>Screenshot
+                </button>
+                { time ? <div><img src={image?.base64} alt="screenshot" /> Screenshot taken at {time}</div> : ""}
             </div>
         </div>
     );
 };
 
 const Member: FunctionComponent<WithOnChange<User>> = ({name, smPool, enabled, id, onChange}) => {
-    const setSmPool = (smPool: boolean) => onChange({name, enabled, smPool,id});
+    const setSmPool = (smPool: boolean) => onChange({name, enabled, smPool, id});
     const setEnabled = (enabled: boolean) => onChange({name, enabled, smPool, id});
     const overallColor = enabled ? "green" : "gray";
     const canBeSmColor = enabled && smPool ? "green" : "gray";
@@ -126,12 +157,13 @@ const Names: FunctionComponent<{ names: string[], onChange: (names: string[]) =>
               onChange={e => onChange(e.target.value.split("\n"))} value={names.join("\n")}/>
 );
 
-const Teams: FunctionComponent<{ users: User[], teamCount: number, colors: string[], bias: string }> = ({
-                                                                                                            users,
-                                                                                                            teamCount,
-                                                                                                            colors,
-                                                                                                            bias
-                                                                                                        }) => {
+const Teams: FunctionComponent<{ imageRef: Ref<any>, users: User[], teamCount: number, colors: string[], bias: string }> = ({
+                                                                                                                                      users,
+                                                                                                                                      teamCount,
+                                                                                                                                      colors,
+                                                                                                                                      bias,
+                                                                                                                                      imageRef
+                                                                                                                                  }) => {
     const [seed, setSeed] = useState(0);
     const [random, setRandom] = useState(Chance());
     const [sortedUsers, setSortedUsers] = useState<User[][]>([]);
@@ -164,9 +196,8 @@ const Teams: FunctionComponent<{ users: User[], teamCount: number, colors: strin
             biasIndex = Chance().integer({min: 0, max: teamCount - 1});
         }
         let finalRow = finalArr.length - 1;
-        if (finalArr[finalRow])
-        {
-            if (!finalArr[finalRow][biasIndex].enabled){
+        if (finalArr[finalRow]) {
+            if (!finalArr[finalRow][biasIndex].enabled) {
                 let firstNamedIndex = finalArr[finalRow].findIndex(n => n.enabled);
                 if (firstNamedIndex !== -1) {
                     const temp = finalArr[finalRow][biasIndex];
@@ -179,7 +210,7 @@ const Teams: FunctionComponent<{ users: User[], teamCount: number, colors: strin
         setSortedUsers(finalArr);
     }, [random, teamCount, bias, colors, users]);
 
-    return <table className="table-fixed p-3 text-2xl text-center flex-auto">
+    return <table ref={imageRef} className="table-fixed p-3 text-2xl text-center flex-auto">
         <thead>
         <tr>
             {colors.slice(0, teamCount).map(c =>
