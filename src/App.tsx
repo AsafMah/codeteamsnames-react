@@ -63,8 +63,8 @@ const App: FunctionComponent = () => {
                             if (number < 2) {
                                 number = 2;
                             }
-                            if (number > colors.length - 1) {
-                                number = colors.length - 1;
+                            if (number > colors.length) {
+                                number = colors.length;
                             }
 
                             setTeamCount(number);
