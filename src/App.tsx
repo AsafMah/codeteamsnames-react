@@ -1,6 +1,6 @@
 import React, {
     FunctionComponent, Ref,
-    SyntheticEvent,
+    SyntheticEvent, useCallback,
     useEffect, useRef,
     useState
 } from 'react';
@@ -10,9 +10,11 @@ import {useScreenshot} from './use-react-screenshot'
 
 
 interface User {
+    groupName: string;
     name: string;
     smPool: boolean;
     enabled: boolean;
+    displayed: boolean;
     id: string;
     isSm?: boolean;
 }
@@ -22,7 +24,6 @@ type WithOnChange<T> = T & OnChange<T>;
 
 
 const App: FunctionComponent = () => {
-    const [names, setNames] = useState<string[]>(nameList);
     const [users, setUsers] = useState<Map<string, User>>(new Map());
     const [teamCount, setTeamCount] = useState(2);
     const [bias, setBias] = useState("red");
@@ -30,24 +31,6 @@ const App: FunctionComponent = () => {
     const ref = useRef(null);
     const [image, takeScreenshot] = useScreenshot()
     const colors = ["red", "blue", "green", "yellow"];
-
-    useEffect(() => {
-        setUsers(oldUsers => {
-            const newUsers: Map<string, User> = new Map();
-            for (const n of names) {
-                if (!n?.trim()) {
-                    continue;
-                }
-                newUsers.set(n, oldUsers.get(n) ?? {
-                    name: n,
-                    smPool: true,
-                    enabled: false,
-                    id: Chance().guid()
-                });
-            }
-            return newUsers;
-        });
-    }, [names]);
 
     const onScreenshot = async (_: unknown) => {
         const {blob} = await takeScreenshot(ref.current);
@@ -64,7 +47,7 @@ const App: FunctionComponent = () => {
     return (
         <div className="flex">
             <div className="px-1 flex-auto">
-                <Names names={names} onChange={setNames}/>
+                <NameArea names={nameLists} users={users} onChange={setUsers}/>
             </div>
             <div className="font-normal container mx-auto px-40 flex-auto">
                 <div className="flex flex-wrap justify-center"> {[...users.values()].map(user => (
@@ -114,15 +97,38 @@ const App: FunctionComponent = () => {
                 <button className=" font-medium rounded-md p-2 bg-blue-500 text-white"
                         onClick={onScreenshot}>Screenshot
                 </button>
-                { time ? <div><img src={image?.base64} alt="screenshot" /> Screenshot taken at {time}</div> : ""}
+                {time ? <div><img src={image?.base64} alt="screenshot"/> Screenshot taken at {time}
+                </div> : ""}
             </div>
         </div>
     );
 };
 
-const Member: FunctionComponent<WithOnChange<User>> = ({name, smPool, enabled, id, onChange}) => {
-    const setSmPool = (smPool: boolean) => onChange({name, enabled, smPool, id});
-    const setEnabled = (enabled: boolean) => onChange({name, enabled, smPool, id});
+const Member: FunctionComponent<WithOnChange<User>> = ({
+                                                           name,
+                                                           smPool,
+                                                           enabled,
+                                                           id,
+                                                           groupName,
+                                                           displayed,
+                                                           onChange
+                                                       }) => {
+    const setSmPool = (smPool: boolean) => onChange({
+        name,
+        enabled,
+        smPool,
+        id,
+        groupName: groupName,
+        displayed
+    });
+    const setEnabled = (enabled: boolean) => onChange({
+        name,
+        enabled,
+        smPool,
+        id,
+        groupName: groupName,
+        displayed
+    });
     const overallColor = enabled ? "green" : "gray";
     const canBeSmColor = enabled && smPool ? "green" : "gray";
     const smHover = enabled ? `bg-${canBeSmColor}-300 hover:bg-${canBeSmColor}-400` : "";
@@ -136,7 +142,7 @@ const Member: FunctionComponent<WithOnChange<User>> = ({name, smPool, enabled, i
         setSmPool(!smPool)
     };
     return (
-        <div
+        name && displayed ? <div
             className={`text-xl p-3 m-3 bg-${overallColor}-300 hover:bg-${overallColor}-400 rounded-md items-center cursor-pointer`}
             onClick={() => setEnabled(!enabled)}>
             <button
@@ -144,26 +150,132 @@ const Member: FunctionComponent<WithOnChange<User>> = ({name, smPool, enabled, i
             <div className={`block border-4 ${smHover} cursor-pointer`}
                  onClick={onSmClick}>
                 <input type="checkbox" className="cursor-pointer" name="SM Pool" id={name}
-                       defaultChecked={smPool}
-                       onClick={onSmClick}/>
+                       checked={smPool}
+                       onChange={onSmClick}/>
                 <label className="cursor-pointer" htmlFor="SM Pool"> Can Be SM</label></div>
-        </div>
+        </div> : null
     );
 };
 
-const Names: FunctionComponent<{ names: string[], onChange: (names: string[]) => void }>
-    = ({names, onChange}) => (
-    <textarea className="border-2 border-gray-500" name="names" id="names" cols={30} rows={20}
-              onChange={e => onChange(e.target.value.split("\n"))} value={names.join("\n")}/>
-);
+function NamesBox(props: { group: string, enabled: boolean, onCheckedChange: (value: boolean) => void, users: string, onTextChange: (users: string[]) => void }) {
+    return <div className="border">
+        Group {props.group}
+        <div>
+            <input type="checkbox" checked={props.enabled}
+                   onChange={e => props.onCheckedChange(e.target.checked)}/>
+            <span> Enable this list </span>
+        </div>
+
+        <textarea key={props.group}
+            className="border-2 border-gray-500"
+            name="names"
+            id="names"
+            disabled={!props.enabled}
+            cols={30}
+            rows={props.users.split("\n").length + 2}
+            onChange={e => props.onTextChange(e.target.value.split("\n"))}
+            value={props.users}
+        />
+    </div>;
+}
+
+const NameArea: FunctionComponent<{ names: Record<string, string[]>, users: Map<string, User>, onChange: (users: Map<string, User>) => void }> =
+    ({names, users, onChange}) => {
+
+        const [enabledStates, setEnabledStates] = useState<Record<string,boolean>>( Object.fromEntries(Object.keys(names).map((k) => [k, k === "common"])));
+
+        const updateUsersGet = useCallback((newUsersArray: string[], groupName: string, users: Map<string, User>, enabledStates: Record<string,boolean>) => {
+            const newUsers: Map<string, User> = new Map();
+
+            for (const u of namesToUsers(newUsersArray)) {
+                let name = u.name ?? "";
+                newUsers.set(name, users.get(name) ?? {
+                    name: name,
+                    smPool: u.smPool ?? false,
+                    enabled: false,
+                    id: Chance().guid(),
+                    groupName: groupName,
+                    displayed: enabledStates[groupName]  ?? false
+                });
+                let insertedUser = newUsers.get(name)!;
+                insertedUser.displayed = enabledStates[groupName] ?? false;
+                insertedUser.smPool = u.smPool ?? false;
+            }
+
+
+            for (const [name, user] of users) {
+                if (user.groupName !== groupName) {
+                    newUsers.set(name, user);
+                }
+            }
+            return newUsers;
+        }, []);
+
+        useEffect(() => {
+            let users = new Map();
+            Object.keys(names).map(group => users = updateUsersGet(names[group], group, users, {"common": true}));
+            onChange(users);
+
+        }, [names, onChange, updateUsersGet]);
+
+        const updateUsersInGroup = (newUsersArray: string[], group: string) => {
+            const newUsers = updateUsersGet(newUsersArray, group, users, enabledStates);
+            onChange(newUsers);
+        }
+
+        const namesToUsers = (names: string[]): Partial<User>[] => {
+            return names.map(u => {
+                let trimmed = u.trimStart();
+                let canBeSm = true;
+                if (u.endsWith("-")) {
+                    canBeSm = false;
+                    trimmed = u.slice(0, u.length - 1);
+                }
+
+                return {
+                    name: trimmed,
+                    smPool: canBeSm
+                }
+            });
+        };
+
+        const arr: Record<string, string[]> = {};
+        for (const u of users.values()) {
+            if (!arr[u.groupName]) {
+                arr[u.groupName] = [];
+            }
+
+            let name = u.name + (u.smPool ? "" : "-");
+
+            arr[u.groupName].push(name);
+        }
+        const arrangedUsers: Record<string, string> = {};
+
+        Object.keys(arr).forEach((k, i) => arrangedUsers[k] = arr[k].join("\n"));
+
+        return <>
+            {Object.keys(arrangedUsers).sort().map((key, index) =>
+            <NamesBox key={index + key}
+                      group={key}
+                      enabled={enabledStates[key]}
+                      onCheckedChange={checked => {
+                          const esCopy = {...enabledStates};
+                          esCopy[key] = checked;
+                          setEnabledStates(esCopy);
+                          onChange(updateUsersGet(arrangedUsers[key].split("\n"), key, users, esCopy));
+                      }}
+                      users={arrangedUsers[key]}
+                      onTextChange={value => updateUsersInGroup(value, key)} />
+        )} </>;
+    }
 
 const Teams: FunctionComponent<{ imageRef: Ref<any>, users: User[], teamCount: number, colors: string[], bias: string }> = ({
-                                                                                                                                      users,
-                                                                                                                                      teamCount,
-                                                                                                                                      colors,
-                                                                                                                                      bias,
-                                                                                                                                      imageRef
-                                                                                                                                  }) => {
+                                                                                                                                users,
+                                                                                                                                teamCount,
+                                                                                                                                colors,
+                                                                                                                                bias,
+                                                                                                                                imageRef
+                                                                                                                            }) => {
     const [seed, setSeed] = useState(0);
     const [random, setRandom] = useState(Chance());
     const [sortedUsers, setSortedUsers] = useState<User[][]>([]);
@@ -171,7 +283,7 @@ const Teams: FunctionComponent<{ imageRef: Ref<any>, users: User[], teamCount: n
     useEffect(() => setRandom(Chance(seed)), [seed]);
 
     useEffect(() => {
-        const shuffledUsers = random.shuffle(users.filter(u => u.enabled));
+        const shuffledUsers = random.shuffle(users.filter(u => u.enabled && u.displayed));
         if (!shuffledUsers) {
             return;
         }
@@ -236,7 +348,7 @@ const Teams: FunctionComponent<{ imageRef: Ref<any>, users: User[], teamCount: n
 export default App;
 
 
-const nameList = [
+const nameLists : Record<string, string[]> = {"common": [
     "AmitSh",
     "Ariel",
     "Asaf",
@@ -247,6 +359,6 @@ const nameList = [
     "Ohad",
     "Ran",
     "Vladik",
-    "Yihezkel",
+    "Yihezkel-",
     "Yochai",
-]
+], "additional": ["Yahav", "AmitOf", "Ron"]};
