@@ -251,7 +251,7 @@ const NameArea: FunctionComponent<{ names: Record<string, string[]>, users: Map<
         }
         const arrangedUsers: Record<string, string> = {};
 
-        Object.keys(arr).forEach((k, i) => arrangedUsers[k] = arr[k].join("\n"));
+        Object.keys(arr).forEach((k) => arrangedUsers[k] = arr[k].join("\n"));
 
         return <>
             {Object.keys(arrangedUsers).sort().map((key, index) =>
