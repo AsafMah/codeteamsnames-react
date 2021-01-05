@@ -7,7 +7,7 @@ import React, {
 
 import {Chance} from 'chance';
 import {useScreenshot} from './use-react-screenshot'
-
+import ColorHash from 'color-hash-ts';
 
 interface User {
     groupName: string;
@@ -31,7 +31,7 @@ const App: FunctionComponent = () => {
     const [filter, setFilter] = useState("");
     const ref = useRef(null);
     const [image, takeScreenshot] = useScreenshot()
-    const colors = ["red", "blue", "green", "yellow"];
+    const colors = ["red", "blue", "green", "yellow", "emerald", "indigo", "trueGray", "purple", "warmGray", "teal", "fuchsia", "coolGray", "cyan", "lightBlue", "pink", "violet", "blueGray", "rose", "orange", "lime", "amber"];
 
     const onScreenshot = async (_: unknown) => {
         const {blob} = await takeScreenshot(ref.current);
@@ -51,9 +51,7 @@ const App: FunctionComponent = () => {
             return filter ?
                 user.name.match(regExp)?.groups ?? null :
                 user.name;
-        }
-        catch (e)
-        {
+        } catch (e) {
             return user.name;
         }
     }
@@ -63,10 +61,16 @@ const App: FunctionComponent = () => {
             const newMap = new Map(users);
             newMap.set(user.name, u);
             setUsers(newMap);
-        }} matched={getMatched(user)}/>
+        }} matched={getMatched(user)}
+                onGroupClicked={g => setAll(members.filter(x => x.props.matched && x.props.displayed && x.props.groupName === g && !x.props.enabled).length > 0, x => x.props.matched && x.props.displayed && x.props.groupName === g)}/>
     ));
 
 
+    function setAll(value: boolean, predicate: (m: JSX.Element) => boolean = m => m.props.matched && m.props.displayed) {
+        const newUsers = new Map(users);
+        members.filter(predicate).forEach(m => newUsers.get(m.props.name)!.enabled = value);
+        setUsers(newUsers);
+    }
 
     return (
         <div className="flex">
@@ -78,20 +82,12 @@ const App: FunctionComponent = () => {
                                     value={filter} onChange={e => setFilter(e.target.value)}/>
                     <button
                         className="text-l font-medium rounded-md p-2 mx-2 bg-blue-500 text-white"
-                        onClick={_ => {
-                            const newUsers = new Map(users);
-                            members.filter(m => m.props.matched && m.props.displayed).forEach(m => newUsers.get(m.props.name)!.enabled = true);
-                            setUsers(newUsers);
-                        }}>Select All
+                        onClick={_ => setAll(true)}>Select All
                     </button>
 
                     <button
                         className="text-l font-medium rounded-md p-2 mx-2 bg-blue-500 text-white"
-                        onClick={_ => {
-                            const newUsers = new Map(users);
-                            members.filter(m => m.props.matched  && m.props.displayed).forEach(m => newUsers.get(m.props.name)!.enabled = false);
-                            setUsers(newUsers);
-                        }}>Select None
+                        onClick={_ => setAll(false)}>Select None
                     </button>
                 </div>
                 <div className="flex flex-wrap justify-center"> {members}
@@ -141,16 +137,17 @@ const App: FunctionComponent = () => {
     );
 };
 
-const Member: FunctionComponent<WithOnChange<User> & {matched: string | Record<string, string> | null}> = ({
-                                                                    name,
-                                                                    smPool,
-                                                                    enabled,
-                                                                    id,
-                                                                    groupName,
-                                                                    displayed,
-                                                                    onChange,
-                                                                    matched
-                                                                }) => {
+const Member: FunctionComponent<WithOnChange<User> & { matched: string | Record<string, string> | null, onGroupClicked: (group: string) => void }> = ({
+                                                                                                                                                          name,
+                                                                                                                                                          smPool,
+                                                                                                                                                          enabled,
+                                                                                                                                                          id,
+                                                                                                                                                          groupName,
+                                                                                                                                                          displayed,
+                                                                                                                                                          onChange,
+                                                                                                                                                          matched,
+                                                                                                                                                          onGroupClicked
+                                                                                                                                                      }) => {
     const setSmPool = (smPool: boolean) => onChange({
         name,
         enabled,
@@ -170,6 +167,7 @@ const Member: FunctionComponent<WithOnChange<User> & {matched: string | Record<s
     const overallColor = enabled ? "green" : "gray";
     const canBeSmColor = enabled && smPool ? "green" : "gray";
     const smHover = enabled ? `bg-${canBeSmColor}-300 hover:bg-${canBeSmColor}-400` : "";
+    const groupColor = new ColorHash().hex(groupName);
 
     let getFormattedName = useCallback(() => {
         if (matched == null) {
@@ -193,10 +191,17 @@ const Member: FunctionComponent<WithOnChange<User> & {matched: string | Record<s
     };
     return (
         formattedName && displayed ? <div
-            className={`text-xl p-3 m-3 bg-${overallColor}-300 hover:bg-${overallColor}-400 rounded-md items-center cursor-pointer`}
+            className={`relative text-xl p-3 pr-5 m-3 bg-${overallColor}-300 hover:bg-${overallColor}-400 rounded-md items-center cursor-pointer`}
             onClick={() => setEnabled(!enabled)}>
             <button
-                className=" font-medium rounded-md p-2 bg-blue-500 text-white">{formattedName}</button>
+                className="font-medium rounded-md p-2 bg-blue-500 text-white">{formattedName}</button>
+            <button className="absolute right-0 top-0 text-xs rounded p-1 text-white"
+                    style={{"backgroundColor": groupColor}}
+                    onClick={e => {
+                        e.stopPropagation();
+                        onGroupClicked(groupName)
+                    }}
+            >{groupName}</button>
             <div className={`block border-4 ${smHover} cursor-pointer`}
                  onClick={onSmClick}>
                 <input type="checkbox" className="cursor-pointer" name="SM Pool" id={name}
@@ -217,14 +222,14 @@ function NamesBox(props: { group: string, enabled: boolean, onCheckedChange: (va
         </div>
 
         <textarea key={props.group}
-            className="border-2 border-gray-500"
-            name="names"
-            id="names"
-            disabled={!props.enabled}
-            cols={30}
-            rows={props.users.split("\n").length + 2}
-            onChange={e => props.onTextChange(e.target.value.split("\n"))}
-            value={props.users}
+                  className="border-2 border-gray-500"
+                  name="names"
+                  id="names"
+                  disabled={!props.enabled}
+                  cols={30}
+                  rows={props.users.split("\n").length + 2}
+                  onChange={e => props.onTextChange(e.target.value.split("\n"))}
+                  value={props.users}
         />
     </div>;
 }
@@ -232,9 +237,9 @@ function NamesBox(props: { group: string, enabled: boolean, onCheckedChange: (va
 const NameArea: FunctionComponent<{ names: Record<string, string[]>, users: Map<string, User>, onChange: (users: Map<string, User>) => void }> =
     ({names, users, onChange}) => {
 
-        const [enabledStates, setEnabledStates] = useState<Record<string,boolean>>( Object.fromEntries(Object.keys(names).map((k) => [k, k === "common"])));
+        const [enabledStates, setEnabledStates] = useState<Record<string, boolean>>(Object.fromEntries(Object.keys(names).map((k) => [k, k === "common"])));
 
-        const updateUsersGet = useCallback((newUsersArray: string[], groupName: string, users: Map<string, User>, enabledStates: Record<string,boolean>) => {
+        const updateUsersGet = useCallback((newUsersArray: string[], groupName: string, users: Map<string, User>, enabledStates: Record<string, boolean>) => {
             const newUsers: Map<string, User> = new Map();
 
             for (const u of namesToUsers(newUsersArray)) {
@@ -245,7 +250,7 @@ const NameArea: FunctionComponent<{ names: Record<string, string[]>, users: Map<
                     enabled: false,
                     id: Chance().guid(),
                     groupName: groupName,
-                    displayed: enabledStates[groupName]  ?? false
+                    displayed: enabledStates[groupName] ?? false
                 });
                 let insertedUser = newUsers.get(name)!;
                 insertedUser.displayed = enabledStates[groupName] ?? false;
@@ -310,18 +315,18 @@ const NameArea: FunctionComponent<{ names: Record<string, string[]>, users: Map<
 
         return <>
             {Object.keys(arrangedUsers).sort().map((key, index) =>
-            <NamesBox key={index + key}
-                      group={key}
-                      enabled={enabledStates[key]}
-                      onCheckedChange={checked => {
-                          const esCopy = {...enabledStates};
-                          esCopy[key] = checked;
-                          setEnabledStates(esCopy);
-                          onChange(updateUsersGet(arrangedUsers[key].split("\n"), key, users, esCopy));
-                      }}
-                      users={arrangedUsers[key]}
-                      onTextChange={value => updateUsersInGroup(value, key)} />
-        )} </>;
+                <NamesBox key={index + key}
+                          group={key}
+                          enabled={enabledStates[key]}
+                          onCheckedChange={checked => {
+                              const esCopy = {...enabledStates};
+                              esCopy[key] = checked;
+                              setEnabledStates(esCopy);
+                              onChange(updateUsersGet(arrangedUsers[key].split("\n"), key, users, esCopy));
+                          }}
+                          users={arrangedUsers[key]}
+                          onTextChange={value => updateUsersInGroup(value, key)}/>
+            )} </>;
     }
 
 const Teams: FunctionComponent<{ imageRef: Ref<any>, users: User[], teamCount: number, colors: string[], bias: string }> = ({
@@ -403,17 +408,19 @@ const Teams: FunctionComponent<{ imageRef: Ref<any>, users: User[], teamCount: n
 export default App;
 
 
-const nameLists : Record<string, string[]> = {"common": [
-    "AmitSh",
-    "Ariel",
-    "Asaf",
-    "Boaz",
-    "Keren",
-    "Lea",
-    "Nir",
-    "Ohad",
-    "Ran",
-    "Vladik",
-    "Yihezkel-",
-    "Yochai",
-], "additional": ["Yahav", "AmitOf", "Ron"]};
+const nameLists: Record<string, string[]> = {
+    "common": [
+        "AmitSh",
+        "Ariel",
+        "Asaf",
+        "Boaz",
+        "Keren",
+        "Lea",
+        "Nir",
+        "Ohad",
+        "Ran",
+        "Vladik",
+        "Yihezkel-",
+        "Yochai",
+    ], "additional": ["Yahav", "AmitOf", "Ron"]
+};
