@@ -43,7 +43,7 @@ const App: FunctionComponent = () => {
     });
 
 
-    const colors = ["red", "blue", "green", "yellow", "emerald", "indigo", "trueGray", "purple", "warmGray", "teal", "fuchsia", "coolGray", "cyan", "lightBlue", "pink", "violet", "blueGray", "rose", "orange", "lime", "amber"];
+    const colors = ["red", "blue", "green", "yellow", "indigo", "purple", "pink"];
 
     const onScreenshot = async (_: unknown) => {
         const {blob} = await takeScreenshot(ref.current);
