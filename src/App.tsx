@@ -45,14 +45,25 @@ const App: FunctionComponent = () => {
         setTime(new Date().toDateString());
     };
 
+    function getMatched(user: User) {
+        try {
+            const regExp = new RegExp(`(?<before>.*)(?<matched>${filter})(?<after>.*)`, "i");
+            return filter ?
+                user.name.match(regExp)?.groups ?? null :
+                user.name;
+        }
+        catch (e)
+        {
+            return user.name;
+        }
+    }
+
     let members = [...users.values()].map(user => (
         <Member key={user.name} {...user} onChange={u => {
             const newMap = new Map(users);
             newMap.set(user.name, u);
             setUsers(newMap);
-        }} matched={filter ?
-            user.name.match(new RegExp(`(?<before>.*)(?<matched>${filter})(?<after>.*)`, "i"))?.groups ?? null :
-            user.name}/>
+        }} matched={getMatched(user)}/>
     ));
 
 
