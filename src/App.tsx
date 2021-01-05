@@ -28,6 +28,7 @@ const App: FunctionComponent = () => {
     const [teamCount, setTeamCount] = useState(2);
     const [bias, setBias] = useState("red");
     const [time, setTime] = useState("");
+    const [filter, setFilter] = useState("");
     const ref = useRef(null);
     const [image, takeScreenshot] = useScreenshot()
     const colors = ["red", "blue", "green", "yellow"];
@@ -44,20 +45,45 @@ const App: FunctionComponent = () => {
         setTime(new Date().toDateString());
     };
 
+    let members = [...users.values()].map(user => (
+        <Member key={user.name} {...user} onChange={u => {
+            const newMap = new Map(users);
+            newMap.set(user.name, u);
+            setUsers(newMap);
+        }} matched={filter ?
+            user.name.match(new RegExp(`(?<before>.*)(?<matched>${filter})(?<after>.*)`, "i"))?.groups ?? null :
+            user.name}/>
+    ));
+
+
+
     return (
         <div className="flex">
             <div className="px-1 flex-auto">
                 <NameArea names={nameLists} users={users} onChange={setUsers}/>
             </div>
             <div className="font-normal container mx-auto px-40 flex-auto">
-                <div className="flex flex-wrap justify-center"> {[...users.values()].map(user => (
-                    <Member key={user.name} {...user} onChange={u => {
-                        const newMap = new Map(users);
-                        newMap.set(user.name, u);
-                        setUsers(newMap);
-                    }}/>
-                ))
-                }
+                <div>Filter: <input className="border border-black" type="text" autoFocus={true}
+                                    value={filter} onChange={e => setFilter(e.target.value)}/>
+                    <button
+                        className="text-l font-medium rounded-md p-2 mx-2 bg-blue-500 text-white"
+                        onClick={_ => {
+                            const newUsers = new Map(users);
+                            members.filter(m => m.props.matched && m.props.displayed).forEach(m => newUsers.get(m.props.name)!.enabled = true);
+                            setUsers(newUsers);
+                        }}>Select All
+                    </button>
+
+                    <button
+                        className="text-l font-medium rounded-md p-2 mx-2 bg-blue-500 text-white"
+                        onClick={_ => {
+                            const newUsers = new Map(users);
+                            members.filter(m => m.props.matched  && m.props.displayed).forEach(m => newUsers.get(m.props.name)!.enabled = false);
+                            setUsers(newUsers);
+                        }}>Select None
+                    </button>
+                </div>
+                <div className="flex flex-wrap justify-center"> {members}
                 </div>
                 <div className="mx-auto flex flex-wrap">
                     <div>
@@ -104,15 +130,16 @@ const App: FunctionComponent = () => {
     );
 };
 
-const Member: FunctionComponent<WithOnChange<User>> = ({
-                                                           name,
-                                                           smPool,
-                                                           enabled,
-                                                           id,
-                                                           groupName,
-                                                           displayed,
-                                                           onChange
-                                                       }) => {
+const Member: FunctionComponent<WithOnChange<User> & {matched: string | Record<string, string> | null}> = ({
+                                                                    name,
+                                                                    smPool,
+                                                                    enabled,
+                                                                    id,
+                                                                    groupName,
+                                                                    displayed,
+                                                                    onChange,
+                                                                    matched
+                                                                }) => {
     const setSmPool = (smPool: boolean) => onChange({
         name,
         enabled,
@@ -133,6 +160,18 @@ const Member: FunctionComponent<WithOnChange<User>> = ({
     const canBeSmColor = enabled && smPool ? "green" : "gray";
     const smHover = enabled ? `bg-${canBeSmColor}-300 hover:bg-${canBeSmColor}-400` : "";
 
+    let getFormattedName = useCallback(() => {
+        if (matched == null) {
+            return null
+        }
+        if (typeof matched == "string") {
+            return <>{matched}</>;
+        }
+        return <> {matched["before"]}<span
+            className="font-bold text-yellow-500">{matched["matched"]}</span>{matched["after"]} </>;
+    }, [matched]);
+    const formattedName = getFormattedName();
+
     let onSmClick = (e: SyntheticEvent) => {
         e.stopPropagation();
         if (!enabled) {
@@ -142,11 +181,11 @@ const Member: FunctionComponent<WithOnChange<User>> = ({
         setSmPool(!smPool)
     };
     return (
-        name && displayed ? <div
+        formattedName && displayed ? <div
             className={`text-xl p-3 m-3 bg-${overallColor}-300 hover:bg-${overallColor}-400 rounded-md items-center cursor-pointer`}
             onClick={() => setEnabled(!enabled)}>
             <button
-                className=" font-medium rounded-md p-2 bg-blue-500 text-white">{name}</button>
+                className=" font-medium rounded-md p-2 bg-blue-500 text-white">{formattedName}</button>
             <div className={`block border-4 ${smHover} cursor-pointer`}
                  onClick={onSmClick}>
                 <input type="checkbox" className="cursor-pointer" name="SM Pool" id={name}
@@ -239,19 +278,24 @@ const NameArea: FunctionComponent<{ names: Record<string, string[]>, users: Map<
             });
         };
 
-        const arr: Record<string, string[]> = {};
-        for (const u of users.values()) {
-            if (!arr[u.groupName]) {
-                arr[u.groupName] = [];
+        const getArrangedUsers = useCallback(() => {
+            const arr: Record<string, string[]> = {};
+            for (const u of users.values()) {
+                if (!arr[u.groupName]) {
+                    arr[u.groupName] = [];
+                }
+
+                let name = u.name + (u.smPool ? "" : "-");
+
+                arr[u.groupName].push(name);
             }
+            const arrangedUsers: Record<string, string> = {};
 
-            let name = u.name + (u.smPool ? "" : "-");
+            Object.keys(arr).forEach((k) => arrangedUsers[k] = arr[k].join("\n"));
+            return arrangedUsers;
+        }, [users]);
+        const arrangedUsers = getArrangedUsers();
 
-            arr[u.groupName].push(name);
-        }
-        const arrangedUsers: Record<string, string> = {};
-
-        Object.keys(arr).forEach((k) => arrangedUsers[k] = arr[k].join("\n"));
 
         return <>
             {Object.keys(arrangedUsers).sort().map((key, index) =>
