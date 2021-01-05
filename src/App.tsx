@@ -31,6 +31,18 @@ const App: FunctionComponent = () => {
     const [filter, setFilter] = useState("");
     const ref = useRef(null);
     const [image, takeScreenshot] = useScreenshot()
+    const [nameLists, setNameLists] = useState(() => {
+        const prev = window.localStorage.getItem("nameLists");
+        if (prev)
+        {
+            return JSON.parse(prev);
+        }
+        else {
+            return defaultNameLists;
+        }
+    });
+
+
     const colors = ["red", "blue", "green", "yellow", "emerald", "indigo", "trueGray", "purple", "warmGray", "teal", "fuchsia", "coolGray", "cyan", "lightBlue", "pink", "violet", "blueGray", "rose", "orange", "lime", "amber"];
 
     const onScreenshot = async (_: unknown) => {
@@ -42,7 +54,7 @@ const App: FunctionComponent = () => {
 
         // @ts-ignore
         await navigator.clipboard.write([new ClipboardItem({[blob.type]: blob})]);
-        setTime(new Date().toDateString());
+        setTime(new Date().toLocaleTimeString());
     };
 
     function getMatched(user: User) {
@@ -75,7 +87,12 @@ const App: FunctionComponent = () => {
     return (
         <div className="flex">
             <div className="px-1 flex-auto">
-                <NameArea names={nameLists} users={users} onChange={setUsers}/>
+                <NameArea names={nameLists} users={users} onChange={setUsers} onSaveNames={
+                    names => {
+                        window.localStorage.setItem("nameLists", JSON.stringify(names));
+                        setNameLists(names);
+                    }
+                }/>
             </div>
             <div className="font-normal container mx-auto px-40 flex-auto">
                 <div>Filter: <input className="border border-black" type="text" autoFocus={true}
@@ -234,11 +251,11 @@ function NamesBox(props: { group: string, enabled: boolean, onCheckedChange: (va
     </div>;
 }
 
-const NameArea: FunctionComponent<{ names: Record<string, string[]>, users: Map<string, User>, onChange: (users: Map<string, User>) => void }> =
-    ({names, users, onChange}) => {
+const NameArea: FunctionComponent<{ names: Record<string, string[]>, users: Map<string, User>, onChange: (users: Map<string, User>) => void , onSaveNames: (names: Record<string, string[]>) => void}> =
+    ({names, users, onChange, onSaveNames}) => {
 
         const [enabledStates, setEnabledStates] = useState<Record<string, boolean>>(Object.fromEntries(Object.keys(names).map((k) => [k, k === "common"])));
-
+        const [saveTime, setSaveTime] = useState<string | null>(null);
         const updateUsersGet = useCallback((newUsersArray: string[], groupName: string, users: Map<string, User>, enabledStates: Record<string, boolean>) => {
             const newUsers: Map<string, User> = new Map();
 
@@ -314,6 +331,16 @@ const NameArea: FunctionComponent<{ names: Record<string, string[]>, users: Map<
 
 
         return <>
+            <div>
+                <button
+                    className="text-l font-medium rounded-md p-2 mx-2 bg-blue-500 text-white"
+                    onClick={_ => {
+                        onSaveNames(Object.fromEntries(Object.entries(arrangedUsers).map(([k, v]) => [k, v.split("\n")])));
+                        setSaveTime("Saved at " + new Date().toLocaleTimeString());
+                    }}>Save
+                </button>
+                {saveTime}
+            </div>
             {Object.keys(arrangedUsers).sort().map((key, index) =>
                 <NamesBox key={index + key}
                           group={key}
@@ -408,7 +435,7 @@ const Teams: FunctionComponent<{ imageRef: Ref<any>, users: User[], teamCount: n
 export default App;
 
 
-const nameLists: Record<string, string[]> = {
+const defaultNameLists: Record<string, string[]> = {
     "common": [
         "AmitSh",
         "Ariel",
