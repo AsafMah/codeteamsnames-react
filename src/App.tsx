@@ -1,7 +1,10 @@
 import React, {
-    FunctionComponent, Ref,
-    SyntheticEvent, useCallback,
-    useEffect, useRef,
+    FunctionComponent,
+    Ref,
+    SyntheticEvent,
+    useCallback,
+    useEffect,
+    useRef,
     useState
 } from 'react';
 
@@ -10,7 +13,7 @@ import {useScreenshot} from './use-react-screenshot'
 import ColorHash from 'color-hash-ts';
 
 interface User {
-    groupName: string;
+    groupId: string;
     name: string;
     smPool: boolean;
     enabled: boolean;
@@ -29,15 +32,14 @@ const App: FunctionComponent = () => {
     const [bias, setBias] = useState("red");
     const [time, setTime] = useState("");
     const [filter, setFilter] = useState("");
+    const [groups, setGroups] = useState<Map<string, string>>(new Map());
     const ref = useRef(null);
     const [image, takeScreenshot] = useScreenshot()
-    const [nameLists, setNameLists] = useState(() => {
+    const [nameLists] = useState(() => {
         const prev = window.localStorage.getItem("nameLists");
-        if (prev)
-        {
+        if (prev) {
             return JSON.parse(prev);
-        }
-        else {
+        } else {
             return defaultNameLists;
         }
     });
@@ -69,12 +71,13 @@ const App: FunctionComponent = () => {
     }
 
     let members = [...users.values()].map(user => (
-        <Member key={user.name} {...user} onChange={u => {
-            const newMap = new Map(users);
-            newMap.set(user.name, u);
-            setUsers(newMap);
-        }} matched={getMatched(user)}
-                onGroupClicked={g => setAll(members.filter(x => x.props.matched && x.props.displayed && x.props.groupName === g && !x.props.enabled).length > 0, x => x.props.matched && x.props.displayed && x.props.groupName === g)}/>
+        <Member key={user.name} {...user} groupName={groups.get(user.groupId) ?? ""}
+                onChange={u => {
+                    const newMap = new Map(users);
+                    newMap.set(user.name, u);
+                    setUsers(newMap);
+                }} matched={getMatched(user)}
+                onGroupClicked={g => setAll(members.filter(x => x.props.matched && x.props.displayed && x.props.groupId === g && !x.props.enabled).length > 0, x => x.props.matched && x.props.displayed && x.props.groupId === g)}/>
     ));
 
 
@@ -87,12 +90,13 @@ const App: FunctionComponent = () => {
     return (
         <div className="flex">
             <div className="px-1 flex-auto">
-                <NameArea names={nameLists} users={users} onChange={setUsers} onSaveNames={
-                    names => {
-                        window.localStorage.setItem("nameLists", JSON.stringify(names));
-                        setNameLists(names);
-                    }
-                }/>
+                <NameArea names={nameLists} users={users} onChange={setUsers} groups={groups}
+                          onGroupsChange={setGroups}
+                          onSaveNames={
+                              names => {
+                                  window.localStorage.setItem("nameLists", JSON.stringify(names));
+                              }
+                          }/>
             </div>
             <div className="font-normal container mx-auto px-40 flex-auto">
                 <div>Filter: <input className="border border-black" type="text" autoFocus={true}
@@ -154,23 +158,25 @@ const App: FunctionComponent = () => {
     );
 };
 
-const Member: FunctionComponent<WithOnChange<User> & { matched: string | Record<string, string> | null, onGroupClicked: (group: string) => void }> = ({
-                                                                                                                                                          name,
-                                                                                                                                                          smPool,
-                                                                                                                                                          enabled,
-                                                                                                                                                          id,
-                                                                                                                                                          groupName,
-                                                                                                                                                          displayed,
-                                                                                                                                                          onChange,
-                                                                                                                                                          matched,
-                                                                                                                                                          onGroupClicked
-                                                                                                                                                      }) => {
+const Member: FunctionComponent<WithOnChange<User> & { groupName: string, matched: string | Record<string, string> | null, onGroupClicked: (group: string) => void }> =
+    ({
+         name,
+         smPool,
+         enabled,
+         id,
+         groupId,
+         displayed,
+         onChange,
+         matched,
+         onGroupClicked,
+         groupName
+     }) => {
     const setSmPool = (smPool: boolean) => onChange({
         name,
         enabled,
         smPool,
         id,
-        groupName: groupName,
+        groupId: groupId,
         displayed
     });
     const setEnabled = (enabled: boolean) => onChange({
@@ -178,13 +184,13 @@ const Member: FunctionComponent<WithOnChange<User> & { matched: string | Record<
         enabled,
         smPool,
         id,
-        groupName: groupName,
+        groupId: groupId,
         displayed
     });
     const overallColor = enabled ? "green" : "gray";
     const canBeSmColor = enabled && smPool ? "green" : "gray";
     const smHover = enabled ? `bg-${canBeSmColor}-300 hover:bg-${canBeSmColor}-400` : "";
-    const groupColor = new ColorHash().hex(groupName);
+    const groupColor = new ColorHash().hex(groupId);
 
     let getFormattedName = useCallback(() => {
         if (matched == null) {
@@ -216,7 +222,7 @@ const Member: FunctionComponent<WithOnChange<User> & { matched: string | Record<
                     style={{"backgroundColor": groupColor}}
                     onClick={e => {
                         e.stopPropagation();
-                        onGroupClicked(groupName)
+                        onGroupClicked(groupId)
                     }}
             >{groupName}</button>
             <div className={`block border-4 ${smHover} cursor-pointer`}
@@ -229,9 +235,16 @@ const Member: FunctionComponent<WithOnChange<User> & { matched: string | Record<
     );
 };
 
-function NamesBox(props: { group: string, enabled: boolean, onCheckedChange: (value: boolean) => void, users: string, onTextChange: (users: string[]) => void }) {
+function NamesBox(props: {
+    group: string,
+    enabled: boolean,
+    onCheckedChange: (value: boolean) => void, users: string,
+    onNameChange: (name: string) => void,
+    onTextChange: (users: string[]) => void,
+}) {
     return <div className="border">
-        Group {props.group}
+        Group <input type="text" value={props.group}
+                     onChange={e => props.onNameChange(e.target.value)}/>
         <div>
             <input type="checkbox" checked={props.enabled}
                    onChange={e => props.onCheckedChange(e.target.checked)}/>
@@ -251,12 +264,19 @@ function NamesBox(props: { group: string, enabled: boolean, onCheckedChange: (va
     </div>;
 }
 
-const NameArea: FunctionComponent<{ names: Record<string, string[]>, users: Map<string, User>, onChange: (users: Map<string, User>) => void , onSaveNames: (names: Record<string, string[]>) => void}> =
-    ({names, users, onChange, onSaveNames}) => {
+const NameArea: FunctionComponent<{
+    names: Record<string, string[]>,
+    users: Map<string, User>,
+    groups: Map<string, string>,
+    onChange: (users: Map<string, User>) => void,
+    onGroupsChange: (groups: Map<string, string>) => void,
+    onSaveNames: (names: Record<string, string[]>) => void
+}> =
+    ({names, groups, users, onChange, onSaveNames, onGroupsChange}) => {
 
-        const [enabledStates, setEnabledStates] = useState<Record<string, boolean>>(Object.fromEntries(Object.keys(names).map((k) => [k, k === "common"])));
+        const [enabledStates, setEnabledStates] = useState<Record<string, boolean>>({});
         const [saveTime, setSaveTime] = useState<string | null>(null);
-        const updateUsersGet = useCallback((newUsersArray: string[], groupName: string, users: Map<string, User>, enabledStates: Record<string, boolean>) => {
+        const updateUsersGet = useCallback((newUsersArray: string[], groupId: string, users: Map<string, User>, enabledStates: Record<string, boolean>) => {
             const newUsers: Map<string, User> = new Map();
 
             for (const u of namesToUsers(newUsersArray)) {
@@ -264,19 +284,18 @@ const NameArea: FunctionComponent<{ names: Record<string, string[]>, users: Map<
                 newUsers.set(name, users.get(name) ?? {
                     name: name,
                     smPool: u.smPool ?? false,
-                    enabled: false,
+                    enabled: u.enabled ?? false,
                     id: Chance().guid(),
-                    groupName: groupName,
-                    displayed: enabledStates[groupName] ?? false
+                    groupId: groupId,
+                    displayed: enabledStates[groupId] ?? false
                 });
                 let insertedUser = newUsers.get(name)!;
-                insertedUser.displayed = enabledStates[groupName] ?? false;
+                insertedUser.displayed = enabledStates[groupId] ?? false;
                 insertedUser.smPool = u.smPool ?? false;
             }
 
-
             for (const [name, user] of users) {
-                if (user.groupName !== groupName) {
+                if (user.groupId !== groupId) {
                     newUsers.set(name, user);
                 }
             }
@@ -285,10 +304,32 @@ const NameArea: FunctionComponent<{ names: Record<string, string[]>, users: Map<
 
         useEffect(() => {
             let users = new Map();
-            Object.keys(names).map(group => users = updateUsersGet(names[group], group, users, {"common": true}));
+            const newGroups = new Map();
+            const values = [...newGroups.entries()];
+            const enabledStates : Record<string, boolean> = {};
+            Object.keys(names).forEach(groupName =>{
+                const result = values.find(([_, name]) => name === groupName);
+                let id = "";
+                const namesInGroup = names[groupName];
+                if (!result)
+                {
+                    id = groupName+Chance().guid();
+                    if (groupName.endsWith("+"))
+                    {
+                        groupName = groupName.slice(0, groupName.length - 1);
+                        enabledStates[id] = true;
+                    }
+                    newGroups.set(id, groupName)
+                }
+                else {
+                    id = result[0];
+                }
+                users = updateUsersGet(namesInGroup, id, users, enabledStates);
+            });
             onChange(users);
-
-        }, [names, onChange, updateUsersGet]);
+            onGroupsChange(newGroups);
+            setEnabledStates(enabledStates);
+        }, [names, onChange, onGroupsChange, updateUsersGet]);
 
         const updateUsersInGroup = (newUsersArray: string[], group: string) => {
             const newUsers = updateUsersGet(newUsersArray, group, users, enabledStates);
@@ -299,6 +340,13 @@ const NameArea: FunctionComponent<{ names: Record<string, string[]>, users: Map<
             return names.map(u => {
                 let trimmed = u.trimStart();
                 let canBeSm = true;
+                let enabled = false;
+
+                if (u.endsWith("+")) {
+                    enabled = true;
+                    trimmed = u.slice(0, u.length - 1);
+                }
+
                 if (u.endsWith("-")) {
                     canBeSm = false;
                     trimmed = u.slice(0, u.length - 1);
@@ -306,7 +354,8 @@ const NameArea: FunctionComponent<{ names: Record<string, string[]>, users: Map<
 
                 return {
                     name: trimmed,
-                    smPool: canBeSm
+                    smPool: canBeSm,
+                    enabled: enabled
                 }
             });
         };
@@ -314,13 +363,11 @@ const NameArea: FunctionComponent<{ names: Record<string, string[]>, users: Map<
         const getArrangedUsers = useCallback(() => {
             const arr: Record<string, string[]> = {};
             for (const u of users.values()) {
-                if (!arr[u.groupName]) {
-                    arr[u.groupName] = [];
+                if (!arr[u.groupId]) {
+                    arr[u.groupId] = [];
                 }
-
-                let name = u.name + (u.smPool ? "" : "-");
-
-                arr[u.groupName].push(name);
+                let name = u.name + (u.smPool ? "" : "-") + (u.enabled ? "+" : "");
+                arr[u.groupId].push(name);
             }
             const arrangedUsers: Record<string, string> = {};
 
@@ -335,16 +382,23 @@ const NameArea: FunctionComponent<{ names: Record<string, string[]>, users: Map<
                 <button
                     className="text-l font-medium rounded-md p-2 mx-2 bg-blue-500 text-white"
                     onClick={_ => {
-                        onSaveNames(Object.fromEntries(Object.entries(arrangedUsers).map(([k, v]) => [k, v.split("\n")])));
+                        onSaveNames(
+                            Object.fromEntries(
+                                Object.entries(arrangedUsers).map(([k, v]) => [(groups.get(k) ?? "") + (enabledStates[k] ? "+" : ""), v.split("\n")])));
                         setSaveTime("Saved at " + new Date().toLocaleTimeString());
                     }}>Save
                 </button>
                 {saveTime}
             </div>
-            {Object.keys(arrangedUsers).sort().map((key, index) =>
-                <NamesBox key={index + key}
-                          group={key}
-                          enabled={enabledStates[key]}
+            {Object.keys(arrangedUsers).sort().map((key) =>
+                <NamesBox key={key}
+                          group={groups.get(key)!}
+                          enabled={enabledStates[key] ?? false}
+                          onNameChange={newName => {
+                              const newGroups = new Map(groups);
+                              newGroups.set(key, newName);
+                              onGroupsChange(newGroups);
+                          }}
                           onCheckedChange={checked => {
                               const esCopy = {...enabledStates};
                               esCopy[key] = checked;
@@ -436,7 +490,7 @@ export default App;
 
 
 const defaultNameLists: Record<string, string[]> = {
-    "common": [
+    "common+": [
         "AmitSh",
         "Ariel",
         "Asaf",
