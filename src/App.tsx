@@ -241,14 +241,20 @@ function NamesBox(props: {
     onCheckedChange: (value: boolean) => void, users: string,
     onNameChange: (name: string) => void,
     onTextChange: (users: string[]) => void,
+    onDelete: () => void,
 }) {
     return <div className="border">
-        Group <input type="text" value={props.group}
+        Group <input className="border border-black" type="text" value={props.group}
                      onChange={e => props.onNameChange(e.target.value)}/>
+
         <div>
             <input type="checkbox" checked={props.enabled}
                    onChange={e => props.onCheckedChange(e.target.checked)}/>
             <span> Enable this list </span>
+            <button
+                className="inline text-sm rounded-md m-1 p-1 bg-red-600 hover:bg-red-800 text-white"
+                onClick={_ => { props.onDelete() }}>Delete
+            </button>
         </div>
 
         <textarea key={props.group}
@@ -276,6 +282,7 @@ const NameArea: FunctionComponent<{
 
         const [enabledStates, setEnabledStates] = useState<Record<string, boolean>>({});
         const [saveTime, setSaveTime] = useState<string | null>(null);
+        const [newGroupName, setNewGroupName] = useState("");
         const updateUsersGet = useCallback((newUsersArray: string[], groupId: string, users: Map<string, User>, enabledStates: Record<string, boolean>) => {
             const newUsers: Map<string, User> = new Map();
 
@@ -372,8 +379,16 @@ const NameArea: FunctionComponent<{
             const arrangedUsers: Record<string, string> = {};
 
             Object.keys(arr).forEach((k) => arrangedUsers[k] = arr[k].join("\n"));
+
+            for (const group of groups.keys()) {
+                if (!arrangedUsers[group])
+                {
+                    arrangedUsers[group] = "";
+                }
+            }
+
             return arrangedUsers;
-        }, [users]);
+        }, [users, groups]);
         const arrangedUsers = getArrangedUsers();
 
 
@@ -406,8 +421,40 @@ const NameArea: FunctionComponent<{
                               onChange(updateUsersGet(arrangedUsers[key].split("\n"), key, users, esCopy));
                           }}
                           users={arrangedUsers[key]}
-                          onTextChange={value => updateUsersInGroup(value, key)}/>
-            )} </>;
+                          onTextChange={value => updateUsersInGroup(value, key)}
+                          onDelete={() => {
+                              const newUsers = new Map();
+                              for (const [id, user] of users.entries()) {
+                                  if (user.groupId !== key){
+                                      newUsers.set(id, user)
+                                  }
+                              }
+                              onChange(newUsers);
+                              const newGroups = new Map(groups);
+                              newGroups.delete(key);
+                              onGroupsChange(newGroups);
+                          }}
+                />
+            )}
+            <div>
+                <div>
+                    New group:
+                    <input className="border border-black" type="text"
+                           value={newGroupName}
+                           onChange={e => setNewGroupName(e.target.value)}/>
+                    <button
+                        className="inline text-sm rounded-md m-1 p-1 bg-green-600 hover:bg-green-800 text-white"
+                        onClick={_ => {
+                            const newGroups = new Map(groups);
+                            const id = newGroupName + Chance().guid();
+                            newGroups.set(id, newGroupName);
+                            enabledStates[id] = true;
+                            onGroupsChange(newGroups);
+                        }}>Add
+                    </button>
+                </div>
+            </div>
+            </>;
     }
 
 const Teams: FunctionComponent<{ imageRef: Ref<any>, users: User[], teamCount: number, colors: string[], bias: string }> = ({
