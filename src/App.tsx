@@ -467,8 +467,19 @@ const Teams: FunctionComponent<{ imageRef: Ref<any>, users: User[], teamCount: n
     const [seed, setSeed] = useState(0);
     const [random, setRandom] = useState(Chance());
     const [sortedUsers, setSortedUsers] = useState<User[][]>([]);
-    useEffect(() => setSeed(Chance().integer()), [users]);
-    useEffect(() => setRandom(Chance(seed)), [seed]);
+    const [freeze, setFreeze] = useState(false);
+    useEffect(() => {
+        setSeed(Chance().integer())
+    }, [users]);
+    useEffect(() => {
+        if (freeze) {
+            setRandom(old => Chance(old.seed));
+        }
+        else {
+            setRandom(Chance(seed));
+        }
+
+    }, [seed, freeze]);
 
     useEffect(() => {
         const shuffledUsers = random.shuffle(users.filter(u => u.enabled && u.displayed));
@@ -510,7 +521,8 @@ const Teams: FunctionComponent<{ imageRef: Ref<any>, users: User[], teamCount: n
         setSortedUsers(finalArr);
     }, [random, teamCount, bias, colors, users]);
 
-    return <table ref={imageRef} className="table-fixed p-3 text-2xl text-center flex-auto">
+    return <div>
+    <table ref={imageRef} className="table-fixed p-3 text-2xl text-center flex-auto">
         <thead>
         <tr>
             {colors.slice(0, teamCount).map(c =>
@@ -530,6 +542,10 @@ const Teams: FunctionComponent<{ imageRef: Ref<any>, users: User[], teamCount: n
         </tr>)}
         </tbody>
     </table>
+        <div>
+            <input type="checkbox" checked={freeze} onChange={e => setFreeze(e.target.checked)}/> Freeze
+        </div>
+    </div>
 };
 
 
